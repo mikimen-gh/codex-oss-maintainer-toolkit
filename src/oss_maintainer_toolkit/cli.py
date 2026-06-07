@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 from .checks import build_report
+from . import __version__
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -25,6 +26,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--fail-on-review",
         action="store_true",
         help="Exit with status 1 when the report status is review.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     return parser.parse_args(argv)
 

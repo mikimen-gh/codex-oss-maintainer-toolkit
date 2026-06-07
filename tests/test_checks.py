@@ -53,6 +53,15 @@ class ReportTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
 
+    def test_cli_returns_failure_when_requested_for_review_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("public\n", encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                exit_code = main([str(root), "--fail-on-review"])
+
+        self.assertEqual(exit_code, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

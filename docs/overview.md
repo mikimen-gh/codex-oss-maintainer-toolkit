@@ -14,3 +14,7 @@ for:
 - Project implementation signals
 - Secret-looking strings
 - Private local-state markers
+
+The project is designed to be useful even at an early stage: the current CLI can
+already produce a pass/review report, fail CI, and output JSON for future
+automation.
