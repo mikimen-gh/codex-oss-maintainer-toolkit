@@ -1,0 +1,13 @@
+project:
+  name: sample-project
+  public_url: https://example.com/sample-project
+
+maintainer:
+  contact: user@example.com
+
+automation:
+  review_enabled: true
+  release_notes_enabled: true
+
+secrets:
+  api_token: REPLACE_ME
