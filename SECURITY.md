@@ -20,4 +20,5 @@ Run the public-safety check before publishing:
 
 ```sh
 ./scripts/verify-public-safety.sh
+PYTHONPATH=src python -m oss_maintainer_toolkit.cli . --fail-on-review
 ```

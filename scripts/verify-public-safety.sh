@@ -14,6 +14,8 @@ fi
 echo "checking for local-only paths and private state markers"
 if rg --hidden --glob '!.git/' --glob '!node_modules/' --glob '!dist/' --glob '!build/' -n \
   --glob '!scripts/verify-public-safety.sh' \
+  --glob '!src/oss_maintainer_toolkit/checks.py' \
+  --glob '!tests/test_checks.py' \
   --glob '!.gitignore' \
   '/Users/|/home/|/opt/|/var/lib/|id_ed25519|codex-home-backup|state_[0-9]+\.sqlite|logs_[0-9]+\.sqlite|session_index\.jsonl|\.codex' .; then
   echo "local/private marker check: review findings above"

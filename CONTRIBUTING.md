@@ -11,6 +11,8 @@ Thanks for helping improve this project.
 
 ```sh
 ./scripts/verify-public-safety.sh
+PYTHONPATH=src python -m unittest discover -s tests
+PYTHONPATH=src python -m oss_maintainer_toolkit.cli . --fail-on-review
 ```
 
 ## Privacy Requirements
