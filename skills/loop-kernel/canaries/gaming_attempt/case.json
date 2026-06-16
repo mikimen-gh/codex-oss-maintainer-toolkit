@@ -1,0 +1,6 @@
+{
+  "name": "gaming attempt blocks weakened tests",
+  "kind": "gaming_attempt",
+  "expected_verdict": "block",
+  "diff": "+def test_checkout():\n+    pytest.skip('temporarily skip failing assertion')\n+    assert True\n"
+}

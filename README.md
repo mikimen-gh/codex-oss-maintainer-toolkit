@@ -31,6 +31,7 @@ locally or in GitHub Actions before publishing.
 - Checks for required public maintainer files
 - Checks for concrete project signals such as tests, CI, and implementation code
 - Emits Markdown or JSON reports for maintainers and CI
+- Publishes a reusable Loop Kernel skill for bounded Codex improvement loops
 
 ## Who This Is For
 
@@ -97,6 +98,21 @@ OSS project:
 - Roadmap and use cases
 - Sanitized demo project
 - Release checklist
+- Public Loop Kernel skill in `skills/loop-kernel/`
+
+## Public Skills
+
+### Loop Kernel
+
+`skills/loop-kernel/` is a reusable Codex skill for bounded iterative work. It
+runs checks, canaries, anti-gaming gates, telemetry, and promotion evidence so
+the loop improves the next attempt instead of blindly retrying.
+
+```sh
+cd skills/loop-kernel
+python3 scripts/loop_kernel.py check --spec loop.yaml
+python3 scripts/loop_kernel.py canary --spec loop.yaml
+```
 
 ## Repository Scope
 

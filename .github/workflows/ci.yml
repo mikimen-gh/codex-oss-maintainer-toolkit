@@ -17,3 +17,8 @@ jobs:
         run: PYTHONPATH=src python -m unittest discover -s tests
       - name: Run public safety check
         run: ./scripts/verify-public-safety.sh
+      - name: Run loop skill smoke checks
+        run: |
+          cd skills/loop-kernel
+          python3 scripts/loop_kernel.py check --spec loop.yaml
+          python3 scripts/canary_runner.py --spec loop.yaml

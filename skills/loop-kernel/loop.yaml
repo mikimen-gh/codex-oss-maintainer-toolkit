@@ -1,0 +1,34 @@
+{
+  "goal": "Run a compact Codex loop that makes each next attempt smarter without weakening checks.",
+  "state_dir": "state",
+  "run_id": "loop-kernel-public",
+  "risk": 3,
+  "max_iter": 3,
+  "parallelism": 3,
+  "cost_ceiling_tokens": 12000,
+  "canaries": "canaries",
+  "read_only_paths": [
+    "vendor/prior-art/loops"
+  ],
+  "checks": [
+    {
+      "name": "syntax_ast",
+      "cmd": [
+        "python3",
+        "-c",
+        "import ast, pathlib; [ast.parse(p.read_text(encoding='utf-8')) for p in pathlib.Path('scripts').glob('*.py')]"
+      ],
+      "timeout_sec": 30
+    },
+    {
+      "name": "canaries",
+      "cmd": [
+        "python3",
+        "scripts/canary_runner.py",
+        "--spec",
+        "loop.yaml"
+      ],
+      "timeout_sec": 30
+    }
+  ]
+}

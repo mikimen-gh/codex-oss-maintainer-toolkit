@@ -1,0 +1,11 @@
+{
+  "name": "lossy delegation blocks missing frozen brief terms",
+  "kind": "lossy_delegation",
+  "expected_verdict": "block",
+  "required_terms": [
+    "original goal",
+    "read-only prior art",
+    "objective gate"
+  ],
+  "brief": "Please verify the patch quickly and say whether it looks fine."
+}

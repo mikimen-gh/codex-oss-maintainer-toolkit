@@ -1,0 +1,19 @@
+{
+  "name": "theater iteration blocks no-op promotion",
+  "kind": "theater_iteration",
+  "expected_verdict": "reject",
+  "evidence": {
+    "compare": {
+      "improved": false,
+      "grade_points_delta": 0,
+      "weakness_count_delta": 0
+    },
+    "judge": {
+      "verdict": "pass"
+    },
+    "invariants": {
+      "verdict": "pass"
+    },
+    "high_risk": false
+  }
+}
