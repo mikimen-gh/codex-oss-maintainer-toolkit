@@ -9,7 +9,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from state_store import append_jsonl, load_json, load_spec, path_for, read_jsonl, update_state_md, utc_now, write_json
+from state_store import append_jsonl, global_path, load_json, load_spec, path_for, read_jsonl, registry_spec, stable_hash, update_state_md, utc_now, write_json
+
+
+def resolve_spec(spec_path: str | None = None) -> dict[str, Any]:
+    if spec_path:
+        return load_spec(spec_path)
+    return registry_spec(Path.cwd()) or load_spec(None)
 
 
 def grade_from(points: int) -> str:
@@ -24,6 +30,7 @@ def grade_from(points: int) -> str:
 
 def report(spec: dict[str, Any]) -> dict[str, Any]:
     rows = read_jsonl(path_for(spec, "runs"))
+    global_rows = read_jsonl(global_path("runs"))
     total = len(rows)
     passes = sum(1 for r in rows if r.get("status") == "pass")
     successes = max(passes, 1)
@@ -34,6 +41,10 @@ def report(spec: dict[str, Any]) -> dict[str, Any]:
     canary_report = load_json(path_for(spec, "canaries"), {})
     canary_total = int(canary_report.get("total") or 0)
     canary_passed = int(canary_report.get("passed") or 0)
+    same_run_global = [r for r in global_rows if r.get("run_id") == spec.get("run_id")]
+    global_signatures = [str(r.get("sig_hash") or "") for r in global_rows if r.get("sig_hash")]
+    cross_repeated = {k: v for k, v in Counter(global_signatures).items() if v >= 3}
+    capability_candidates = compile_capabilities(spec, write=False)
 
     weaknesses: list[str] = []
     if total == 0:
@@ -42,6 +53,8 @@ def report(spec: dict[str, Any]) -> dict[str, Any]:
         weaknesses.append("false-success risk")
     if repeated:
         weaknesses.append("repeated failure signatures")
+    if cross_repeated and not capability_candidates.get("candidates"):
+        weaknesses.append("cross-session failure signatures are not compiled")
     if canary_total == 0:
         weaknesses.append("no canary corpus result")
     elif canary_passed < canary_total:
@@ -69,6 +82,10 @@ def report(spec: dict[str, Any]) -> dict[str, Any]:
         "success_rate_pct": round((passes / total * 100) if total else 0.0, 2),
         "false_success_suspect_rate_pct": round((false_success / total * 100) if total else 0.0, 2),
         "repeated_signatures": repeated,
+        "global_total_runs": len(global_rows),
+        "same_run_global_records": len(same_run_global),
+        "cross_repeated_signature_count": len(cross_repeated),
+        "capability_candidate_count": len(capability_candidates.get("candidates", [])),
         "cost_tokens_total": cost,
         "cost_per_success_tokens": round(cost / successes, 2),
         "canary_pass_rate_pct": round((canary_passed / canary_total * 100) if canary_total else 0.0, 2),
@@ -78,6 +95,50 @@ def report(spec: dict[str, Any]) -> dict[str, Any]:
     }
     write_json(path_for(spec, "report"), result)
     update_state_md(spec, result)
+    return result
+
+
+def compile_capabilities(spec: dict[str, Any], min_count: int = 3, write: bool = False) -> dict[str, Any]:
+    rows = [r for r in read_jsonl(global_path("runs")) if r.get("failure_signature")]
+    by_sig: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        sig_hash = str(row.get("sig_hash") or stable_hash(str(row.get("failure_signature") or "")))
+        by_sig.setdefault(sig_hash, []).append(row)
+    candidates = []
+    for sig_hash, group in by_sig.items():
+        if len(group) < min_count:
+            continue
+        projects = {str(r.get("project_key") or "") for r in group if r.get("project_key")}
+        sessions = {str(r.get("session") or "") for r in group if r.get("session") and r.get("session") != "unknown"}
+        run_ids = {str(r.get("run_id") or "") for r in group if r.get("run_id")}
+        cross_project = len(projects) > 1
+        cross_session = len(sessions) > 1
+        cross_run = len(run_ids) > 1
+        confidence = "high" if cross_project or cross_session else ("medium" if cross_run else "low")
+        first = group[0]
+        candidates.append({
+            "ts": utc_now(),
+            "candidate_id": "cap_" + sig_hash,
+            "sig_hash": sig_hash,
+            "failure_signature": first.get("failure_signature"),
+            "count": len(group),
+            "project_count": len(projects),
+            "session_count": len(sessions),
+            "run_count": len(run_ids),
+            "cross_project": cross_project,
+            "cross_session": cross_session,
+            "cross_run": cross_run,
+            "confidence": confidence,
+            "lesson": "Repeated failure signature should become a reusable check, guard, or project lesson before promotion.",
+            "source": "global_runs.jsonl",
+        })
+    candidates.sort(key=lambda c: (-int(c["count"]), c["confidence"] != "high", str(c["sig_hash"])))
+    result = {"ts": utc_now(), "min_count": min_count, "candidates": candidates}
+    if write:
+        existing_ids = {str(r.get("candidate_id") or "") for r in read_jsonl(global_path("capabilities"))}
+        for candidate in candidates:
+            if candidate["candidate_id"] not in existing_ids:
+                append_jsonl(global_path("capabilities"), candidate)
     return result
 
 
@@ -102,6 +163,21 @@ def compare(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
         "before_grade": before.get("grade"),
         "after_grade": after.get("grade"),
     }
+
+
+def disconfirmation_for(expected: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for metric, rule in expected.items():
+        direction = str(rule.get("direction") or "")
+        if direction == "up":
+            out[metric] = {"bad_if_delta_less_than": float(rule.get("min_delta") or 0)}
+        elif direction == "down":
+            out[metric] = {"bad_if_delta_greater_than": -float(rule.get("min_delta") or 0)}
+        elif direction == "not_up_more_than_pct":
+            out[metric] = {"bad_if_pct_increase_greater_than": float(rule.get("max_pct") or 0)}
+        else:
+            out[metric] = {"bad_if_unobserved": True}
+    return out
 
 
 def propose_hypothesis(spec: dict[str, Any], rep: dict[str, Any]) -> dict[str, Any]:
@@ -130,7 +206,7 @@ def propose_hypothesis(spec: dict[str, Any], rep: dict[str, Any]) -> dict[str, A
         "claim": f"Loop quality is limited by {weakness}.",
         "intervention": intervention,
         "expected_movement": expected,
-        "disconfirmation": "block if the expected metric does not move in the declared direction",
+        "disconfirmation": disconfirmation_for(expected),
         "self_confirmation_blocklist": blocklist,
         "confidence": 0.55,
     }
@@ -211,13 +287,45 @@ def decay(spec: dict[str, Any], days: int = 30) -> dict[str, Any]:
     return {"ts": utc_now(), "decayed": changed, "days": days}
 
 
+def deploy_readiness(spec: dict[str, Any]) -> dict[str, Any]:
+    rep = report(spec)
+    blockers = []
+    warnings = []
+    if not spec.get("checks"):
+        blockers.append("spec has no objective checks")
+    if rep.get("canary_pass_rate_pct") != 100.0:
+        blockers.append("fixed canaries have not passed")
+    if rep.get("false_success_suspect_rate_pct", 100.0) > 0:
+        blockers.append("false-success suspicion is non-zero")
+    if rep.get("total_runs", 0) < 1:
+        blockers.append("no kernel run telemetry")
+    if rep.get("total_runs", 0) < 5:
+        warnings.append("less than 5 real-project runs; deploy-ready, not production-proven")
+    if rep.get("cost_tokens_total", 0) == 0:
+        warnings.append("cost input has not been measured yet")
+    if rep.get("global_total_runs", 0) == 0:
+        warnings.append("global ledger has no records yet")
+    result = {
+        "ts": utc_now(),
+        "verdict": "ready" if not blockers else "not-ready",
+        "blockers": blockers,
+        "warnings": warnings,
+        "report": rep,
+    }
+    write_json(path_for(spec, "deploy"), result)
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluate loop performance and learning.")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    for name in ("report", "hypothesis", "decay"):
+    for name in ("report", "hypothesis", "decay", "deploy", "capabilities"):
         p = sub.add_parser(name)
         p.add_argument("--spec")
         p.add_argument("--json", action="store_true")
+        if name == "capabilities":
+            p.add_argument("--min-count", type=int, default=3)
+            p.add_argument("--write", action="store_true")
     obs_p = sub.add_parser("observe")
     obs_p.add_argument("--spec")
     obs_p.add_argument("--hypothesis", type=Path, required=True)
@@ -232,15 +340,19 @@ def main() -> int:
     if args.cmd == "compare":
         result = compare(load_json(args.before, {}), load_json(args.after, {}))
     elif args.cmd == "observe":
-        spec = load_spec(args.spec)
+        spec = resolve_spec(args.spec)
         result = observe(spec, load_json(args.hypothesis, {}), load_json(args.compare, {}))
     else:
-        spec = load_spec(args.spec)
+        spec = resolve_spec(args.spec)
         rep = report(spec)
         if args.cmd == "report":
             result = rep
         elif args.cmd == "decay":
             result = decay(spec)
+        elif args.cmd == "deploy":
+            result = deploy_readiness(spec)
+        elif args.cmd == "capabilities":
+            result = compile_capabilities(spec, min_count=args.min_count, write=args.write)
         else:
             result = propose_hypothesis(spec, rep)
     if getattr(args, "json", False):

@@ -1,54 +1,108 @@
 # SPEC - Loop Kernel
 
 ## Core Shape
-
-Loop Kernel compresses an iterative work loop into one executable path and four
-support modules.
+Loop Kernel compresses the previous multi-script design into one executable path and four support modules.
 
 ```text
 loop_kernel -> checks/canaries -> gates -> evaluator -> state_store
 ```
 
-The design keeps the advanced layer but avoids orchestration sprawl:
+The design keeps the advanced layer, but removes orchestration sprawl:
 
-- falsifiability is a gate rule,
-- counterfactual support is a promotion criterion,
+- falsifiability is a gate rule, not a separate service,
+- counterfactual support is a promotion criterion, not a standalone workflow,
 - invariants are checked through `gates.py`,
 - hypothesis learning is handled by `evaluator.py`,
-- durable local memory is written through `state_store.py`,
-- adaptive max-iter, strategy mutation, and budget checks live in
-  `loop_kernel.py`.
+- all durable memory is written through `state_store.py`.
+- adaptive max-iter, strategy mutation, and budget checks live inside `loop_kernel.py`.
+- cost input accepts CLI, environment, or per-iteration state files.
+- delegation manifests store role refs and hashes, not full prompt bodies.
 
 ## State Contract
-
 State is both machine-readable and human-readable:
 
-- `state/runs.jsonl`: append-only local run telemetry.
+- `state/runs.jsonl`: append-only run telemetry.
 - `state/eval_report.json`: latest computed report.
 - `state/hypotheses.jsonl`: proposed learning hypotheses.
 - `state/hypothesis_observations.jsonl`: confidence updates.
 - `state/canary_report.json`: fixed canary result.
+- `state/cost-<run_id>-iter<N>.json`: optional cost input from an SDK wrapper.
+- `state/deploy_readiness.json`: deploy-ready vs production-proven boundary.
+- `state/delegation_manifest.json`: lightweight specialist routing plan.
 - `STATE.md`: concise human summary.
 
-Generated state is local-only and should not be committed.
+Cross-project state is separate from project state:
+
+- `~/.local/state/loop-kernel/global_runs.jsonl`: append-only lightweight ledger across projects and sessions.
+- `~/.local/state/loop-kernel/capability_candidates.jsonl`: repeated failure signatures promoted into reusable capability candidates.
+- `~/.local/state/loop-kernel/registry.sqlite`: source-of-truth loop profile registry.
+
+The global ledger stores metadata only: project key/path, spec path, session id,
+run id, goal, status, signature/hash, strategy, topology, gate verdict, and
+cost. It must not store command stdout/stderr, diffs, file contents, or secrets.
+
+Global memory is bounded outside the project:
+
+- `lessons.md` Always-Apply section: hard target <= 3,000 chars.
+- `domain-lessons/*.md`: keyword/on-demand recall.
+- `domain-lessons/_retired.md`: stale lessons removed from active context.
+
+`state_store.py memory-check` reports cap violations and missing domain layout.
+`state_store.py memory-prefetch` produces the SessionStart/UserPromptSubmit
+injection plan, and `state_store.py memory-sync` captures Stop/SessionEnd
+candidates plus compliance checks. These are Hermes-style lifecycle primitives,
+implemented as explicit commands until Codex hooks are safe to wire.
+
+`state_store.py memory-index` builds `~/.local/state/loop-kernel/loops_memory.sqlite`
+from global runs, capability candidates, sync candidates, Always-Apply memory,
+and domain lessons. `memory-search` queries that index with FTS5 when available
+and a safe LIKE fallback otherwise.
+
+## Registry Contract
+Project-local `loop-profile.json` files are compatibility inputs, not the durable
+source of truth. Cross-project / cross-session operation is centered on the
+global registry.
+
+The registry stores:
+
+- `project_key`: git remote fingerprint when available, otherwise path fingerprint.
+- `project_root` and `git_remote`: identity evidence.
+- `profile_id`, `run_id`, `goal`, `checks`, `risk`, `max_iter`, `parallelism`.
+- `cost_ceiling_tokens`, `state_dir`, `canaries`, `read_only_paths`, `tags`.
+
+The registry does not store command stdout/stderr, diffs, source text, prompts,
+or secrets.
+
+`loop_kernel.py discover` finds candidate profiles for the current project.
+`loop_kernel.py attach --spec <file> --project-root <project>` imports a spec as
+a registry profile. `loop_kernel.py preflight` resolves the profile from cwd
+when `--spec` is omitted, runs bounded memory prefetch, validates the resolved
+profile, and reports blockers before any loop run.
+
+When no registry profile exists and no `--spec` is supplied, the kernel falls
+back to its bundled `loop.yaml` for backward compatibility only.
 
 ## Promotion Contract
-
 A change can be promoted only when:
 
 - objective checks pass,
 - canaries pass,
-- semantic anti-gaming gates do not block,
+- semantic anti-gaming G1-G15 does not block,
 - invariants pass,
 - high-risk changes have causal support,
-- the evaluation does not regress,
-- required court evidence exists: goal, check command, check exit, judge, cost,
-  and run id.
+- the evaluation does not regress.
+- required court evidence exists: goal, check command, check exit, judge, cost, run id.
+
+## Cost Input Contract
+Cost is read in this order:
+
+1. CLI: `--cost-per-iter N`
+2. Environment: `LOOP_KERNEL_COST_TOKENS_LAST_ITER` and optional `LOOP_KERNEL_COST_USD_LAST_ITER`
+3. File: `state/cost-<run_id>-iter<N>.json` with `input_tokens`, `output_tokens`, and optional `usd`
+4. Fallback: `unmeasured`, recorded transparently as a warning signal.
 
 ## Canary Contract
-
-Canaries are external anchors. They are fixed fixtures with expected behavior,
-not metrics generated by the loop itself.
+Canaries are external anchors. They are fixed fixtures with expected behavior, not metrics generated by the loop itself.
 
 The required canaries are:
 
@@ -57,3 +111,12 @@ The required canaries are:
 - lossy delegation,
 - theater iteration,
 - identity drift.
+
+## Minimality Rule
+No new top-level script is added unless it cannot fit into one of:
+
+- `loop_kernel.py`
+- `gates.py`
+- `evaluator.py`
+- `canary_runner.py`
+- `state_store.py`

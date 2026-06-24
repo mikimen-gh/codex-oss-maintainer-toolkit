@@ -1,7 +1,7 @@
 {
-  "goal": "Run a compact Codex loop that makes each next attempt smarter without weakening checks.",
+  "goal": "Build a compact Codex loop that amplifies future performance without complexity debt.",
   "state_dir": "state",
-  "run_id": "loop-kernel-public",
+  "run_id": "loop-kernel",
   "risk": 3,
   "max_iter": 3,
   "parallelism": 3,

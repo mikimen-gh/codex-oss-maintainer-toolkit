@@ -1,44 +1,50 @@
 ---
 name: loop-kernel
-description: Run a bounded Codex improvement loop with objective checks, anti-gaming gates, canaries, telemetry, and promotion evidence. Use when a task should iterate only while each attempt becomes smarter and safer.
+description: Run a bounded improvement loop with objective checks, anti-gaming gates, canaries, telemetry, a cross-project registry, and bounded memory. Use when a task should iterate only while each attempt becomes smarter and safer.
 ---
 
 # Loop Kernel
 
-Use this skill when work needs a bounded improvement loop instead of a blind
-"try until green" retry cycle.
-
-The loop keeps four promises:
-
-- one entrypoint runs the loop,
-- false success is rejected before promotion,
-- telemetry is written after every run,
-- the next attempt must be smarter than the last.
+Use this skill when work needs a bounded improvement loop instead of a blind retry cycle.
 
 ## Quick Start
 
 From this skill directory:
 
 ```sh
-python3 scripts/loop_kernel.py check --spec loop.yaml
-python3 scripts/loop_kernel.py canary --spec loop.yaml
-python3 scripts/loop_kernel.py run --spec loop.yaml
-python3 scripts/loop_kernel.py status --spec loop.yaml
+python3 scripts/loop_kernel.py validate --spec loop.yaml --json
+python3 scripts/loop_kernel.py canary --spec loop.yaml --json
+python3 scripts/loop_kernel.py preflight --prompt "<task>" --json
+python3 scripts/loop_kernel.py run --spec loop.yaml --json
+python3 scripts/evaluator.py deploy --spec loop.yaml --json
 ```
 
-## Operating Model
+## Cross-Project Registry
 
-The kernel has four phases:
+Attach a reviewed profile once, then discover it from the target project root:
 
-1. `decide`: read `loop.yaml`, `STATE.md`, and telemetry.
-2. `act`: run one bounded unit of checks or implementation support.
-3. `verify`: objective checks, semantic gates, canaries, and invariants.
-4. `learn`: update telemetry, hypothesis confidence, and `STATE.md`.
+```sh
+python3 scripts/loop_kernel.py attach --spec loop.yaml --project-root "$PWD" --json
+python3 scripts/loop_kernel.py discover --project-root "$PWD" --query "<task>" --json
+python3 scripts/loop_kernel.py preflight --prompt "<task>" --json
+```
 
-## Public Safety
+Set `LOOP_KERNEL_STATE_DIR` to choose where global registry and memory indexes live.
 
-This public version intentionally excludes private runtime state. The committed
-`state/` directory starts empty except for `.gitkeep`; local runs will create
-telemetry files on the user's machine.
+## Bounded Memory
 
-Do not commit generated files under `state/`.
+```sh
+python3 scripts/state_store.py memory-check --cap-chars 3000
+python3 scripts/state_store.py memory-index --json
+python3 scripts/state_store.py memory-search --query "<task>" --json
+python3 scripts/state_store.py memory-prefetch --prompt "<task>" --json
+python3 scripts/state_store.py memory-sync --prompt "<task>" --capture "<candidate>" --json
+```
+
+## Hard Rules
+
+- Do not weaken tests, checks, or canaries to get green.
+- Do not let the maker be the only judge; use objective checks and gates.
+- Do not promote changes when deploy readiness reports blockers.
+- Do not store stdout, stderr, diffs, file contents, prompts, private paths, or secrets in the global ledger.
+- Do not commit generated telemetry from `state/`.
